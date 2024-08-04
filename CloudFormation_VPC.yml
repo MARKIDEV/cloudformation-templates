@@ -1,0 +1,165 @@
+# This creates a VPC with two public subnets and two private subnets in two Availability Zones, 
+# together with a NAT Gateway and associated routing. Change the Availability Zone locations as needed.
+
+# Important: this configures various AWS services and there are costs associated with these services after the Free Tier usage.
+# Please see the AWS Pricing pages for details. You are responsible for any AWS costs incurred. 
+# No warranty is implied in this example.
+
+# Usage from command line:
+#   aws cloudformation --region <<YOUR-REGION>> create-stack --stack-name vpc- --template-body file://vpc-setup.yaml
+    
+    Resources:
+      ## VPC
+      PubPrivateVPC:
+        Type: AWS::EC2::VPC
+        DeletionPolicy: Retain
+        Properties:
+          CidrBlock: 10.0.0.0/16
+          Tags: 
+            - Key: Name
+              Value : Global-VPC
+
+      ## SUBNETS     
+      PublicSubnet1:
+        Type: AWS::EC2::Subnet
+        DeletionPolicy: Retain
+        Properties:
+          VpcId: !Ref PubPrivateVPC
+          AvailabilityZone: eu-west-1a
+          CidrBlock: 10.0.1.0/24
+          MapPublicIpOnLaunch: true
+          Tags: 
+            - Key: Type
+              Value : Public
+            - Key: Name
+              Value : PublicSubnet1
+     
+      PublicSubnet2:
+        Type: AWS::EC2::Subnet
+        DeletionPolicy: Retain
+        Properties:
+          VpcId: !Ref PubPrivateVPC
+          AvailabilityZone: eu-west-1b
+          CidrBlock: 10.0.2.0/24
+          MapPublicIpOnLaunch: true
+          Tags: 
+            - Key: Type
+              Value : Public
+            - Key: Name
+              Value : PublicSubnet2
+     
+      PrivateSubnet1:
+        Type: AWS::EC2::Subnet
+        DeletionPolicy: Retain
+        Properties:
+          VpcId: !Ref PubPrivateVPC
+          AvailabilityZone: eu-west-1a
+          CidrBlock: 10.0.3.0/24
+          MapPublicIpOnLaunch: false
+          Tags: 
+            - Key: Type
+              Value : Private
+            - Key: Name
+              Value : PrivateSubnet1
+     
+      PrivateSubnet2:
+        Type: AWS::EC2::Subnet
+        DeletionPolicy: Retain
+        Properties:
+          VpcId: !Ref PubPrivateVPC
+          AvailabilityZone: eu-west-1b
+          CidrBlock: 10.0.4.0/24
+          MapPublicIpOnLaunch: false
+          Tags: 
+            - Key: Type
+              Value : Private
+            - Key: Name
+              Value : PrivateSubnet2
+     
+     ## INTERNET GATEWAY
+      InternetGateway:
+        Type: AWS::EC2::InternetGateway
+        DeletionPolicy: Retain
+      
+      GatewayToInternet:
+        Type: AWS::EC2::VPCGatewayAttachment
+        DeletionPolicy: Retain
+        Properties:
+          VpcId: !Ref PubPrivateVPC
+          InternetGatewayId: !Ref InternetGateway
+      
+      ## PUBLIC ROUTING
+      PublicRouteTable:
+        Type: AWS::EC2::RouteTable
+        DeletionPolicy: Retain
+        Properties:
+          VpcId: !Ref PubPrivateVPC
+      
+      PublicRoute:
+        Type: AWS::EC2::Route
+        DeletionPolicy: Retain
+        DependsOn: GatewayToInternet
+        Properties:
+          RouteTableId: !Ref PublicRouteTable
+          DestinationCidrBlock: 0.0.0.0/0
+          GatewayId: !Ref InternetGateway
+     
+      PublicSubnet1RouteTableAssociation:
+        Type: AWS::EC2::SubnetRouteTableAssociation
+        DeletionPolicy: Retain
+        Properties:
+          SubnetId: !Ref PublicSubnet1
+          RouteTableId: !Ref PublicRouteTable
+     
+      PublicSubnet2RouteTableAssociation:
+        Type: AWS::EC2::SubnetRouteTableAssociation
+        DeletionPolicy: Retain
+        Properties:
+          SubnetId: !Ref PublicSubnet2
+          RouteTableId: !Ref PublicRouteTable
+     
+      ## NAT GATEWAY
+      NatGateway:
+        Type: AWS::EC2::NatGateway
+        DeletionPolicy: Retain
+        DependsOn: NatPublicIP
+        Properties: 
+          SubnetId: !Ref PublicSubnet1
+          AllocationId: !GetAtt NatPublicIP.AllocationId 
+
+      ## ELASTIC IP
+      NatPublicIP:
+        Type: AWS::EC2::EIP
+        DeletionPolicy: Retain
+        DependsOn: PubPrivateVPC
+        Properties:
+          Domain: vpc
+     
+      ## PRIVATE ROUTING
+      PrivateRouteTable:
+        Type: AWS::EC2::RouteTable
+        DeletionPolicy: Retain
+        Properties:
+          VpcId: !Ref PubPrivateVPC
+      
+      PrivateRoute:
+        Type: AWS::EC2::Route
+        DeletionPolicy: Retain
+        Properties:
+          NatGatewayId: !Ref NatGateway
+          RouteTableId: !Ref PrivateRouteTable
+          DestinationCidrBlock: 0.0.0.0/0
+     
+      PrivateSubnet1RouteTableAssociation:
+        Type: AWS::EC2::SubnetRouteTableAssociation
+        DeletionPolicy: Retain
+        Properties:
+          SubnetId: !Ref PrivateSubnet1
+          RouteTableId: !Ref PrivateRouteTable
+     
+      PrivateSubnet2RouteTableAssociation:
+        Type: AWS::EC2::SubnetRouteTableAssociation
+        DeletionPolicy: Retain
+        Properties:
+          SubnetId: !Ref PrivateSubnet2
+          RouteTableId: !Ref PrivateRouteTable
